@@ -1527,6 +1527,11 @@ public:
    * @param x The X coordinate where the drag and drop occurred
    * @param y The Y coordinate where the drag and drop occurred */
   void OnDrop(const char* str, float x, float y);
+  
+  /** @param ext A CString with the extension of the about to be dropped item
+   * @param x The X coordinate where the drag and drop occurred
+   * @param y The Y coordinate where the drag and drop occurred */
+  void OnDropOver(const char* ext, float x, float y);
 
   /** This is an idle timer tick call on the GUI thread, only active if USE_IDLE_CALLS is defined */
   void OnGUIIdle();
