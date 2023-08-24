@@ -80,6 +80,10 @@ public:
 
   void SetOffline(bool renderingOffline) { IPlugProcessor::SetRenderingOffline(renderingOffline); }
 
+#pragma mark - Specialist Use
+public:
+  AudioTimeStamp GetLastAudioTimeStamp() const { return mLastTimeStamp; }
+
   /** Override this method, in special cases, to request data from the iOS app wrapper
    * the data must exist!
    */
