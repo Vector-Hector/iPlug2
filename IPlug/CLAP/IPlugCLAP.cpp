@@ -399,6 +399,8 @@ clap_process_status IPlugCLAP::process(const clap_process *process) noexcept
   if (mHostHasTail)
     return CLAP_PROCESS_TAIL;
   
+#if PLUG_TYPE == 0 // Only implement local tail for effects
+  
   // No tail
   
   if (!GetTailSize())
@@ -414,6 +416,12 @@ clap_process_status IPlugCLAP::process(const clap_process *process) noexcept
   mTailCount = insQuiet ? std::min(mTailCount + nFrames, GetTailSize()) : 0;
   
   return mTailCount < GetTailSize() ? CLAP_PROCESS_CONTINUE : CLAP_PROCESS_SLEEP;
+
+#else
+  
+  return CLAP_PROCESS_CONTINUE;
+  
+#endif
 }
 
 // clap_plugin_render
