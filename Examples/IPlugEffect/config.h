@@ -45,6 +45,11 @@
 
 #define VST3_SUBCATEGORY "Fx"
 
+//#define CLAP_MANUAL_URL "https://iplug2.github.io/manual.pdf"
+//#define CLAP_SUPPORT_URL "https://iplug2.github.io"
+//#define CLAP_DESCRIPTION "description"
+//#define CLAP_FEATURES "audio_effect"
+
 #define APP_NUM_CHANNELS 2
 #define APP_N_VECTOR_WAIT 0
 #define APP_MULT 1
