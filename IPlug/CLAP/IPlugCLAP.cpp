@@ -30,7 +30,7 @@ void ClapNameCopy(char *destination, const char *source)
 IPlugCLAP::IPlugCLAP(const InstanceInfo& info, const Config& config)
   : IPlugAPIBase(config, kAPICLAP)
   , IPlugProcessor(config, kAPICLAP)
-  , ClapPluginHelper(info.mDesc, *info.mHost)
+  , ClapPluginHelper(info.mDesc, info.mHost)
 {
   Trace(TRACELOC, "%s", config.pluginName);
   
