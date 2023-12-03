@@ -1272,7 +1272,7 @@ static void MakeCursorFromName(NSCursor*& cursor, const char *name)
 - (BOOL) performDragOperation: (id<NSDraggingInfo>) sender
 {
   NSPasteboard* pPasteBoard = [sender draggingPasteboard];
-
+  
   if ([[pPasteBoard types] containsObject:NSFilenamesPboardType])
   {
     NSArray* pFiles = [pPasteBoard propertyListForType:NSFilenamesPboardType];
