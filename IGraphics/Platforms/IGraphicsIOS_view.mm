@@ -858,12 +858,22 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
   
   if (urls.count == 1)
   {
-    NSURL* pSource = urls[0];
-    NSString* pFullPath = [pSource path];
+    NSURL* pURL = urls[0];
+    NSString* pFullPath = [pURL path];
     fileName.Set([pFullPath UTF8String]);
-    
-    NSString* pTruncatedPath = [pFullPath stringByDeletingLastPathComponent];
 
+    [pURL startAccessingSecurityScopedResource];
+    NSFileManager* pFileManager = [NSFileManager defaultManager];
+
+    bool isFile = ![pURL hasDirectoryPath];
+    
+    NSString* pTruncatedPath = pFullPath;
+
+    if (!isFile)
+    {
+      fileName.Set("");
+    }
+    
     if (pTruncatedPath)
     {
       path.Set([pTruncatedPath UTF8String]);
@@ -872,6 +882,8 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
 
     if (mFileDialogFunc)
       mFileDialogFunc(fileName, path);
+    
+    [pURL stopAccessingSecurityScopedResource];
   }
   else
   {
