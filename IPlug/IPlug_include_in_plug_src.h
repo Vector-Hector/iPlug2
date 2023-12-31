@@ -288,11 +288,11 @@
 #endif
 #ifndef CLAP_FEATURES
   #if PLUG_TYPE==0
-  #define CLAP_FEATURES "audio_effect"
+  #define CLAP_FEATURES CLAP_PLUGIN_FEATURE_AUDIO_EFFECT
   #elif PLUG_TYPE==1
-  #define CLAP_FEATURES "instrument"
+  #define CLAP_FEATURES CLAP_PLUGIN_FEATURE_INSTRUMENT
   #elif PLUG_TYPE==2
-  #define CLAP_FEATURES "note_effect"
+  #define CLAP_FEATURES CLAP_PLUGIN_FEATURE_NOTE_EFFECT
   #endif
 #endif
 

@@ -48,7 +48,7 @@
 #define CLAP_MANUAL_URL "https://iplug2.github.io/manuals/example_manual.pdf"
 #define CLAP_SUPPORT_URL "https://github.com/iPlug2/iPlug2/wiki"
 #define CLAP_DESCRIPTION "A simple audio effect for modifying gain"
-#define CLAP_FEATURES "audio_effect utility" // (if not defined plugin type will be added automatically)
+#define CLAP_FEATURES "audio-effect utility" // (if not defined plugin type will be added automatically)
 
 #define APP_NUM_CHANNELS 2
 #define APP_N_VECTOR_WAIT 0
