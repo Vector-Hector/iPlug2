@@ -71,8 +71,9 @@ class IPlugCLAP : public IPlugAPIBase
       switch (mType)
       {
         case Type::Begin:   return CLAP_EVENT_PARAM_GESTURE_BEGIN;
-        case Type::Value:   return CLAP_EVENT_PARAM_VALUE;
         case Type::End:     return CLAP_EVENT_PARAM_GESTURE_END;
+        case Type::Value:   // fall through
+        default:            return CLAP_EVENT_PARAM_VALUE;
       }
     }
     
