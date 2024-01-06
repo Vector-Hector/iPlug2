@@ -589,21 +589,23 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
   mFileDialogFunc = completionHandler;
 
   UIDocumentPickerViewController* vc = NULL;
-  NSURL* url = [[NSURL alloc] initFileURLWithPath:path];
+  NSURL* pURL = [[NSURL alloc] initFileURLWithPath:path];
+  [pURL startAccessingSecurityScopedResource];
 
   if (action == EFileAction::Open)
   {
     vc = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:contentTypes asCopy:YES];
-    [vc setDirectoryURL:url];
+    [vc setDirectoryURL:pURL];
   }
   else
   {
-    vc = [[UIDocumentPickerViewController alloc] initForExportingURLs:@[url]];
+    vc = [[UIDocumentPickerViewController alloc] initForExportingURLs:@[pURL]];
   }
   
   [vc setDelegate:self];
   
   [self.window.rootViewController presentViewController:vc animated:YES completion:nil];
+  [pURL stopAccessingSecurityScopedResource];
 }
 
 - (void) promptForDirectory: (NSString*) path : (IFileDialogCompletionHandlerFunc) completionHandler
@@ -613,18 +615,20 @@ extern StaticStorage<CoreTextFontDescriptor> sFontDescriptorCache;
   mFileDialogFunc = completionHandler;
 
   UIDocumentPickerViewController* vc = NULL;
-  NSURL* url = [[NSURL alloc] initFileURLWithPath:path];
+  NSURL* pURL = [[NSURL alloc] initFileURLWithPath:path];
+  [pURL startAccessingSecurityScopedResource];
 
   NSMutableArray* pFileTypes = [[NSMutableArray alloc] init];
   UTType* directoryType = [UTType typeWithIdentifier:@"public.folder"];
   [pFileTypes addObject:directoryType];
   
   vc = [[UIDocumentPickerViewController alloc] initForOpeningContentTypes:pFileTypes];
-  [vc setDirectoryURL:url];
+  [vc setDirectoryURL:pURL];
 
   [vc setDelegate:self];
   
   [self.window.rootViewController presentViewController:vc animated:YES completion:nil];
+  [pURL stopAccessingSecurityScopedResource];
 }
 
 - (BOOL) promptForColor: (IColor&) color : (const char*) str : (IColorPickerHandlerFunc) func
