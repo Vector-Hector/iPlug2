@@ -1167,8 +1167,6 @@ void* IGraphicsWin::OpenWindow(void* pParent)
 
   OnViewInitialized((void*) dc);
 
-  SetScreenScale(screenScale); // resizes draw context
-
   GetDelegate()->LayoutUI(this);
 
   if (MultiTouchEnabled() && GetSystemMetrics(SM_DIGITIZER) & NID_MULTI_INPUT)

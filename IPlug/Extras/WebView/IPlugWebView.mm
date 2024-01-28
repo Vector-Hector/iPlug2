@@ -23,13 +23,105 @@ extern bool GetResourcePathFromBundle(const char* fileName, const char* searchEx
 
 using namespace iplug;
 
-@interface ScriptHandler : NSObject <WKScriptMessageHandler, WKNavigationDelegate>
+@interface IPLUG_WKWEBVIEW : WKWebView
+{
+  bool mEnableInteraction;
+}
+- (void)setEnableInteraction:(bool)enable;
+
+@end
+
+@implementation IPLUG_WKWEBVIEW
+
+- (instancetype)initWithFrame:(CGRect)frame configuration:(WKWebViewConfiguration *)configuration
+{
+  self = [super initWithFrame:frame configuration:configuration];
+  
+  if (self)
+  {
+    mEnableInteraction = true;
+  }
+  return self;
+}
+
+#ifdef OS_MAC
+- (NSView *)hitTest:(NSPoint)point
+{
+  if (!mEnableInteraction)
+  {
+    return nil;
+  }
+  else
+    return [super hitTest:point];
+}
+
+- (void)willOpenMenu:(NSMenu *)menu withEvent:(NSEvent *)event
+{
+  [super willOpenMenu:menu withEvent:event];
+  
+  NSArray<NSString *> *WKStrings = @[
+   @"WKMenuItemIdentifierCopy",
+   @"WKMenuItemIdentifierCopyImage",
+   @"WKMenuItemIdentifierCopyLink",
+   @"WKMenuItemIdentifierDownloadImage",
+   @"WKMenuItemIdentifierDownloadLinkedFile",
+   @"WKMenuItemIdentifierGoBack",
+   @"WKMenuItemIdentifierGoForward",
+//   @"WKMenuItemIdentifierInspectElement",
+   @"WKMenuItemIdentifierLookUp",
+   @"WKMenuItemIdentifierOpenFrameInNewWindow",
+   @"WKMenuItemIdentifierOpenImageInNewWindow",
+   @"WKMenuItemIdentifierOpenLink",
+   @"WKMenuItemIdentifierOpenLinkInNewWindow",
+   @"WKMenuItemIdentifierPaste",
+//   @"WKMenuItemIdentifierReload",
+   @"WKMenuItemIdentifierSearchWeb",
+   @"WKMenuItemIdentifierShowHideMediaControls",
+   @"WKMenuItemIdentifierToggleFullScreen",
+   @"WKMenuItemIdentifierTranslate",
+   @"WKMenuItemIdentifierShareMenu",
+   @"WKMenuItemIdentifierSpeechMenu"
+  ];
+  
+  for (NSInteger itemIndex = 0; itemIndex < menu.itemArray.count; itemIndex++)
+  {
+    if ([WKStrings containsObject:menu.itemArray[itemIndex].identifier])
+    {
+      [menu removeItemAtIndex:itemIndex];
+    }
+  }
+}
+
+#endif
+
+- (void)setEnableInteraction:(bool)enable
+{
+  mEnableInteraction = enable;
+  
+#ifdef OS_MAC
+  if (!mEnableInteraction)
+  {
+    for (NSTrackingArea* trackingArea in self.trackingAreas)
+    {
+      [self removeTrackingArea:trackingArea];
+    }
+  }
+#else
+  self.userInteractionEnabled = mEnableInteraction;
+#endif
+}
+
+
+@end
+
+@interface IPLUG_WKSCRIPTHANDLER : NSObject <WKScriptMessageHandler, WKNavigationDelegate, WKURLSchemeHandler, WKDownloadDelegate>
 {
   IWebView* mWebView;
+  NSURL* downloadDestinationURL;
 }
 @end
 
-@implementation ScriptHandler
+@implementation IPLUG_WKSCRIPTHANDLER
 
 -(id) initWithIWebView:(IWebView*) webView
 {
@@ -52,9 +144,132 @@ using namespace iplug;
   }
 }
 
-- (void) webView:(WKWebView*) webView didFinishNavigation:(WKNavigation*) navigation
+- (void) webView:(IPLUG_WKWEBVIEW*) webView didFinishNavigation:(WKNavigation*) navigation
 {
   mWebView->OnWebContentLoaded();
+}
+
+- (NSURL*) changeURLScheme:(NSURL*) url toScheme:(NSString*) newScheme
+{
+  NSURLComponents* components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:YES];
+  components.scheme = newScheme;
+  return components.URL;
+}
+
+- (void) webView:(nonnull WKWebView *)webView startURLSchemeTask:(nonnull id<WKURLSchemeTask>)urlSchemeTask  API_AVAILABLE(macos(10.13)){
+
+  if ([urlSchemeTask.request.URL.absoluteString containsString:@"iplug2:"])
+  {
+    NSURL* customFileURL = urlSchemeTask.request.URL;
+    NSURL* fileURL = [self changeURLScheme:customFileURL toScheme:@"file"];
+    NSHTTPURLResponse* response = NULL;
+    
+    if ([[NSFileManager defaultManager] fileExistsAtPath:fileURL.path])
+    {
+      NSData* data = [[NSData alloc] initWithContentsOfURL:fileURL];
+      NSString* contentLengthStr = [[NSString alloc] initWithFormat:@"%lu", [data length]];
+      NSString* contentTypeStr = @"text/plain";
+      NSString* extStr = [[fileURL path] pathExtension];
+      if ([extStr isEqualToString:@"html"]) contentTypeStr = @"text/html";
+      else if ([extStr isEqualToString:@"css"]) contentTypeStr = @"text/css";
+      else if ([extStr isEqualToString:@"js"]) contentTypeStr = @"text/javascript";
+      else if ([extStr isEqualToString:@"jpg"]) contentTypeStr = @"image/jpeg";
+      else if ([extStr isEqualToString:@"jpeg"]) contentTypeStr = @"image/jpeg";
+      else if ([extStr isEqualToString:@"svg"]) contentTypeStr = @"image/svg+xml";
+
+      NSDictionary* headerFields = [NSDictionary dictionaryWithObjects:@[contentLengthStr, contentTypeStr] forKeys:@[@"Content-Length", @"Content-Type"]];
+      response = [[NSHTTPURLResponse alloc] initWithURL:customFileURL statusCode:200 HTTPVersion:@"HTTP/1.1" headerFields:headerFields];
+      [urlSchemeTask didReceiveResponse:response];
+      [urlSchemeTask didReceiveData:data];
+    }
+    else
+    {
+      response = [[NSHTTPURLResponse alloc] initWithURL:customFileURL statusCode:404 HTTPVersion:@"HTTP/1.1" headerFields:nil];
+      [urlSchemeTask didReceiveResponse:response];
+    }
+    [urlSchemeTask didFinish];
+  }
+}
+
+- (void) webView:(nonnull WKWebView *)webView stopURLSchemeTask:(nonnull id<WKURLSchemeTask>)urlSchemeTask  API_AVAILABLE(macos(10.13)){
+  
+}
+
+#pragma mark - WKNavigationDelegate
+
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler
+{
+  bool allow = mWebView->CanNavigateToURL([[[[navigationAction request] URL] absoluteString] UTF8String]);
+  
+  if (allow)
+  {
+    decisionHandler(WKNavigationActionPolicyAllow);
+  }
+  else
+  {
+    decisionHandler(WKNavigationActionPolicyCancel);
+  }
+}
+
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationResponse:(WKNavigationResponse *)navigationResponse decisionHandler:(void (^)(WKNavigationResponsePolicy))decisionHandler
+{
+  bool allow = mWebView->CanNavigateToURL([[[[navigationResponse response] URL] absoluteString] UTF8String]);
+  
+  if (!allow)
+  {
+    decisionHandler(WKNavigationResponsePolicyCancel);
+  }
+  
+  if (@available(macOS 11.3, iOS 14.5, *))
+  {
+    bool allowMimeType = mWebView->CanDownloadMIMEType([navigationResponse.response.MIMEType UTF8String]);
+
+    if (allowMimeType)
+    {
+      decisionHandler(WKNavigationResponsePolicyDownload);
+    }
+    else
+    {
+      decisionHandler(WKNavigationResponsePolicyAllow);
+    }
+  }
+  else
+  {
+    decisionHandler(WKNavigationResponsePolicyAllow);
+  }
+}
+
+- (void)webView:(WKWebView *)webView navigationResponse:(WKNavigationResponse *)navigationResponse didBecomeDownload:(WKDownload *)download API_AVAILABLE(macos(11.3), ios(14.5));
+{
+  download.delegate = self;
+}
+
+#pragma mark - WKDownloadDelegate
+
+
+- (void)download:(WKDownload *)download decideDestinationUsingResponse:(NSURLResponse *)response suggestedFilename:(NSString *)filename completionHandler:(void (^)(NSURL * _Nullable))completionHandler API_AVAILABLE(macos(11.3), ios(14.5))
+{
+  WDL_String localPath;
+  mWebView->GetLocalDownloadPathForFile([filename UTF8String], localPath);
+  downloadDestinationURL = [NSURL URLWithString:[NSString stringWithUTF8String:localPath.Get()]];
+  completionHandler(downloadDestinationURL);
+}
+
+- (void)download:(WKDownload *)download didReceiveData:(int64_t)length API_AVAILABLE(macos(11.3), ios(14.5))
+{
+  mWebView->DidReceiveBytes(length);
+}
+
+- (void)download:(WKDownload *)download didFailWithError:(NSError *)error API_AVAILABLE(macos(11.3), ios(14.5))
+{
+  mWebView->FailedToDownloadFile([[downloadDestinationURL absoluteString] UTF8String]);
+  downloadDestinationURL = nil;
+}
+
+- (void)downloadDidFinish:(WKDownload *)download  API_AVAILABLE(macos(11.3), ios(14.5))
+{
+  mWebView->DidDownloadFile([[downloadDestinationURL absoluteString] UTF8String]);
+  downloadDestinationURL = nil;
 }
 
 @end
@@ -69,7 +284,7 @@ IWebView::~IWebView()
   CloseWebView();
 }
 
-void* IWebView::OpenWebView(void* pParent, float x, float y, float w, float h, float scale)
+void* IWebView::OpenWebView(void* pParent, float x, float y, float w, float h, float scale, bool enableDevTools)
 {  
   WKWebViewConfiguration* webConfig = [[WKWebViewConfiguration alloc] init];
   WKPreferences* preferences = [[WKPreferences alloc] init];
@@ -77,23 +292,42 @@ void* IWebView::OpenWebView(void* pParent, float x, float y, float w, float h, f
   WKUserContentController* controller = [[WKUserContentController alloc] init];
   webConfig.userContentController = controller;
 
-  ScriptHandler* scriptHandler = [[ScriptHandler alloc] initWithIWebView: this];
+  [webConfig setValue:@YES forKey:@"allowUniversalAccessFromFileURLs"];
+  IPLUG_WKSCRIPTHANDLER* scriptHandler = [[IPLUG_WKSCRIPTHANDLER alloc] initWithIWebView: this];
   [controller addScriptMessageHandler: scriptHandler name:@"callback"];
-  [preferences setValue:@YES forKey:@"developerExtrasEnabled"];
+  
+  if (enableDevTools)
+  {
+    [preferences setValue:@YES forKey:@"developerExtrasEnabled"];
+  }
+  
+  [preferences setValue:@YES forKey:@"fullScreenEnabled"];
+  [preferences setValue:@YES forKey:@"DOMPasteAllowed"];
+  [preferences setValue:@YES forKey:@"javaScriptCanAccessClipboard"];
+  
   webConfig.preferences = preferences;
+  if (@available(macOS 10.13, *)) {
+    [webConfig setURLSchemeHandler:scriptHandler forURLScheme:@"iplug2"];
+  } else {
+    // Fallback on earlier versions
+  }
   
   // this script adds a function IPlugSendMsg that is used to call the platform webview messaging function in JS
-  WKUserScript* script1 = [[WKUserScript alloc] initWithSource:@"function IPlugSendMsg(m) { webkit.messageHandlers.callback.postMessage(m); }" injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES];
+  WKUserScript* script1 = [[WKUserScript alloc] initWithSource:
+                           @"function IPlugSendMsg(m) { webkit.messageHandlers.callback.postMessage(m); }" injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES];
   [controller addUserScript:script1];
 
   // this script prevents view scaling on iOS
-  WKUserScript* script2 = [[WKUserScript alloc] initWithSource:@"var meta = document.createElement('meta'); meta.name = 'viewport'; meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=YES'; var head = document.getElementsByTagName('head')[0]; head.appendChild(meta);"
-                                                 injectionTime:WKUserScriptInjectionTimeAtDocumentEnd forMainFrameOnly:YES];
+  WKUserScript* script2 = [[WKUserScript alloc] initWithSource:
+                           @"var meta = document.createElement('meta'); meta.name = 'viewport'; \
+                             meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=YES'; \
+                             var head = document.getElementsByTagName('head')[0]; \
+                             head.appendChild(meta);"
+                           injectionTime:WKUserScriptInjectionTimeAtDocumentEnd forMainFrameOnly:YES];
   [controller addUserScript:script2];
   
   
-  WKWebView* webView = [[WKWebView alloc] initWithFrame: MAKERECT(x, y, w, h) configuration:webConfig];
-  
+  IPLUG_WKWEBVIEW* webView = [[IPLUG_WKWEBVIEW alloc] initWithFrame: MAKERECT(x, y, w, h) configuration:webConfig];
 
 #if defined OS_IOS
   if (!mOpaque)
@@ -107,20 +341,12 @@ void* IWebView::OpenWebView(void* pParent, float x, float y, float w, float h, f
 #if defined OS_MAC
   if (!mOpaque)
     [webView setValue:@(NO) forKey:@"drawsBackground"];
-//    [webView setValue:[NSNumber numberWithBool:YES]  forKey:@"drawsTransparentBackground"]; // deprecated
   
   [webView setAllowsMagnification:NO];
 #endif
   
   [webView setNavigationDelegate:scriptHandler];
-    
-//#ifdef OS_MAC
-//  [webView setAutoresizingMask: NSViewHeightSizable|NSViewWidthSizable|NSViewMinXMargin|NSViewMaxXMargin|NSViewMinYMargin|NSViewMaxYMargin ];
-//#else
-//  [webView setAutoresizingMask: UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin | UIViewAutoresizingFlexibleBottomMargin | UIViewAutoresizingFlexibleTopMargin];
-//#endif
-//  [parentView setAutoresizesSubviews:YES];
-  
+
   mWebConfig = (__bridge void*) webConfig;
   mWKWebView = (__bridge void*) webView;
   mScriptHandler = (__bridge void*) scriptHandler;
@@ -132,7 +358,7 @@ void* IWebView::OpenWebView(void* pParent, float x, float y, float w, float h, f
 
 void IWebView::CloseWebView()
 {
-  WKWebView* webView = (__bridge WKWebView*) mWKWebView;
+  IPLUG_WKWEBVIEW* webView = (__bridge IPLUG_WKWEBVIEW*) mWKWebView;
   [webView removeFromSuperview];
   
   mWebConfig = nullptr;
@@ -140,44 +366,78 @@ void IWebView::CloseWebView()
   mScriptHandler = nullptr;
 }
 
+void IWebView::HideWebView(bool hide)
+{
+}
+
 void IWebView::LoadHTML(const char* html)
 {
-  WKWebView* webView = (__bridge WKWebView*) mWKWebView;
+  IPLUG_WKWEBVIEW* webView = (__bridge IPLUG_WKWEBVIEW*) mWKWebView;
   [webView loadHTMLString:[NSString stringWithUTF8String:html] baseURL:nil];
 }
 
 void IWebView::LoadURL(const char* url)
 {
-  WKWebView* webView = (__bridge WKWebView*) mWKWebView;
+  IPLUG_WKWEBVIEW* webView = (__bridge IPLUG_WKWEBVIEW*) mWKWebView;
   
-  NSURL* nsurl = [NSURL URLWithString:[NSString stringWithUTF8String:url] relativeToURL:nil];
-  NSURLRequest* req = [[NSURLRequest alloc] initWithURL:nsurl];
+  NSURL* nsURL = [NSURL URLWithString:[NSString stringWithUTF8String:url] relativeToURL:nil];
+  NSURLRequest* req = [[NSURLRequest alloc] initWithURL:nsURL];
   [webView loadRequest:req];
 }
 
-void IWebView::LoadFile(const char* fileName, const char* bundleID)
+void IWebView::LoadFile(const char* fileName, const char* bundleID, bool useCustomScheme)
 {
-  WKWebView* webView = (__bridge WKWebView*) mWKWebView;
+  IPLUG_WKWEBVIEW* webView = (__bridge IPLUG_WKWEBVIEW*) mWKWebView;
 
   WDL_String fullPath;
-  WDL_String fileNameWeb("web/");
-  fileNameWeb.Append(fileName);
-
-  GetResourcePathFromBundle(fileNameWeb.Get(), fileNameWeb.get_fileext() + 1 /* remove . */, fullPath, bundleID);
+  
+  if (bundleID != nullptr && strlen(bundleID) != 0)
+  {
+    WDL_String fileNameWeb("web/");
+    fileNameWeb.Append(fileName);
+    
+    GetResourcePathFromBundle(fileNameWeb.Get(), fileNameWeb.get_fileext() + 1 /* remove . */, fullPath, bundleID);
+  }
+  else
+  {
+    fullPath.Set(fileName);
+  }
   
   NSString* pPath = [NSString stringWithUTF8String:fullPath.Get()];
+  
+  fullPath.remove_filepart();
+  mWebRoot.Set(fullPath.Get());
 
-  NSString* str = @"file:";
-  NSString* webroot = [str stringByAppendingString:[pPath stringByReplacingOccurrencesOfString:[NSString stringWithUTF8String:fileName] withString:@""]];
+  NSString* urlScheme = useCustomScheme ? @"iplug2:" : @"file:";
+  NSString* webroot = [urlScheme stringByAppendingString:[pPath stringByReplacingOccurrencesOfString:[NSString stringWithUTF8String:fileName] withString:@""]];
+
   NSURL* pageUrl = [NSURL URLWithString:[webroot stringByAppendingString:[NSString stringWithUTF8String:fileName]] relativeToURL:nil];
-  NSURL* rootUrl = [NSURL URLWithString:webroot relativeToURL:nil];
 
-  [webView loadFileURL:pageUrl allowingReadAccessToURL:rootUrl];
+  if (useCustomScheme)
+  {
+    NSURLRequest* req = [[NSURLRequest alloc] initWithURL:pageUrl];
+    [webView loadRequest:req];
+  }
+  else
+  {
+    NSURL* rootUrl = [NSURL URLWithString:webroot relativeToURL:nil];
+    [webView loadFileURL:pageUrl allowingReadAccessToURL:rootUrl];
+  }
+}
+
+void IWebView::ReloadPageContent()
+{
+  IPLUG_WKWEBVIEW* webView = (__bridge IPLUG_WKWEBVIEW*) mWKWebView;
+  
+  if (webView)
+  {
+    [webView reload];
+  }
 }
 
 void IWebView::EvaluateJavaScript(const char* scriptStr, completionHandlerFunc func)
 {
-  WKWebView* webView = (__bridge WKWebView*) mWKWebView;
+  IPLUG_WKWEBVIEW* webView = (__bridge IPLUG_WKWEBVIEW*) mWKWebView;
   
   if (webView && ![webView isLoading])
   {
@@ -195,19 +455,37 @@ void IWebView::EvaluateJavaScript(const char* scriptStr, completionHandlerFunc f
 void IWebView::EnableScroll(bool enable)
 {
 #ifdef OS_IOS
-  WKWebView* webView = (__bridge WKWebView*) mWKWebView;
+  IPLUG_WKWEBVIEW* webView = (__bridge IPLUG_WKWEBVIEW*) mWKWebView;
   [webView.scrollView setScrollEnabled:enable];
 #endif
 }
 
+void IWebView::SetEnableInteraction(bool enable)
+{
+  IPLUG_WKWEBVIEW* webView = (__bridge IPLUG_WKWEBVIEW*) mWKWebView;
+  [webView setEnableInteraction:enable];
+}
+
 void IWebView::SetWebViewBounds(float x, float y, float w, float h, float scale)
 {
-//  [NSAnimationContext beginGrouping]; // Prevent animated resizing
-//  [[NSAnimationContext currentContext] setDuration:0.0];
-  [(__bridge WKWebView*) mWKWebView setFrame: MAKERECT(x, y, w, h) ];
-#ifdef OS_MAC
-  [(__bridge WKWebView*) mWKWebView setMagnification: scale ];
-#endif
-//  [NSAnimationContext endGrouping];
+  [(__bridge IPLUG_WKWEBVIEW*) mWKWebView setFrame: MAKERECT(x, y, w, h) ];
+
+  if (@available(macOS 11.0, ios 14.0, *)) {
+    [(__bridge IPLUG_WKWEBVIEW*) mWKWebView setPageZoom:scale ];
+  }
+}
+
+void IWebView::GetLocalDownloadPathForFile(const char* fileName, WDL_String& localPath)
+{
+  NSURL* url = [[NSURL fileURLWithPath:NSTemporaryDirectory()] URLByAppendingPathComponent:[[NSUUID UUID] UUIDString] isDirectory:YES];
+  NSError *error = nil;
+  @try {
+    [[NSFileManager defaultManager] createDirectoryAtURL:url withIntermediateDirectories:YES attributes:nil error:&error];
+    url = [url URLByAppendingPathComponent:[NSString stringWithUTF8String:fileName]];
+    localPath.Set([[url absoluteString] UTF8String]);
+  } @catch (NSException *exception)
+  {
+    NSLog(@"Error %@",error);
+  }
 }
 
